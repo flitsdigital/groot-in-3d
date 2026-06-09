@@ -118,7 +118,8 @@
 
         const scene = new THREE.Scene();
         const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 100);
-        camera.position.set(0, 0, 6);
+        camera.position.set(0, 0.92, 3.05);
+        camera.lookAt(0, 0.92, 0); // ingezoomd op het hoofd
 
         // --- Subtiele omgevingsreflectie (zachte gradient) voor de glans op het zwart ---
         const pmrem = new THREE.PMREMGenerator(renderer);
@@ -159,7 +160,7 @@
         spin.rotation.x = Math.PI / 2; // rechtop, naar voren gericht
 
         const pointer = { x: 0, y: 0 }, target = { x: 0, y: 0 };
-        const MAX_TILT = 0.28, DAMP = 0.06;
+        const MAX_TILT = 0.2, DAMP = 0.06;
         window.addEventListener('pointermove', (e) => {
             pointer.x = (e.clientX / window.innerWidth) * 2 - 1;
             pointer.y = (e.clientY / window.innerHeight) * 2 - 1;
