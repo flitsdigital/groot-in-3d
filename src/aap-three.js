@@ -7,12 +7,19 @@ function decode(b64, Ctor){
   return new Ctor(bytes.buffer);
 }
 
-function init(){
-const canvas = document.getElementById('scene');
-if (!canvas) {                                            // FIX: voorkomt "Cannot read properties of null (reading 'width')"
-  console.warn('[aap-three] canvas #scene niet gevonden — script gestopt.');
-  return;
+let _geo;
+function getGeometry(){
+  if (!_geo) {
+    _geo = new THREE.BufferGeometry();
+    _geo.setAttribute('position', new THREE.BufferAttribute(decode(POS_B64, Float32Array), 3));
+    _geo.setIndex(new THREE.BufferAttribute(decode(IDX_B64, Uint16Array), 1));
+    _geo.computeVertexNormals();
+  }
+  return _geo;
 }
+
+function init(canvas){
+if (!canvas) return;                                      // FIX: voorkomt "Cannot read properties of null (reading 'width')"
 // Maatreferentie: het canvas zelf, anders zijn ouder-element (de hero-sectie).
 const box = canvas.parentElement || canvas;
 const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -51,14 +58,12 @@ key.position.set(2.5, 4, 3);
 scene.add(key);
 scene.add(new THREE.AmbientLight(0x404040, 0.12)); // minimale neutrale fill (was 0.25)
 
+const pivot = new THREE.Group();  // scroll-gestuurde turntable (wereld-Y)
 const tilt = new THREE.Group();   // volgt de muis (gedempt)
 const spin = new THREE.Group();   // basis-oriëntatie + zweven
-tilt.add(spin); scene.add(tilt);
+tilt.add(spin); pivot.add(tilt); scene.add(pivot);
 
-const geometry = new THREE.BufferGeometry();
-geometry.setAttribute('position', new THREE.BufferAttribute(decode(POS_B64, Float32Array), 3));
-geometry.setIndex(new THREE.BufferAttribute(decode(IDX_B64, Uint16Array), 1));
-geometry.computeVertexNormals();
+const geometry = getGeometry();  // gedeeld tussen alle apen — 1× gedecodeerd
 
 const material = new THREE.MeshStandardMaterial({
   color: 0x000000, metalness: 0.5, roughness: 0.35
@@ -69,6 +74,19 @@ spin.rotation.x = Math.PI / 2; // rechtop, naar voren gericht
 
 const pointer = { x:0, y:0 }, target = { x:0, y:0 };
 const MAX_TILT = 0.1, DAMP = 0.05; // subtielere muis-tilt (was 0.2)
+
+// --- Scroll-gestuurde beweging ---
+const SCROLL_ROT = Math.PI * 0.6; // hoeveel de aap draait over de hele hero (~108°)
+const SCROLL_ZOOM = 0.18;         // hoeveel hij kleiner wordt tijdens het scrollen
+let scrollProgress = 0;
+function updateScroll(){
+  // 0 wanneer de hero bovenaan staat, 1 wanneer hij volledig voorbij gescrold is
+  const rect = box.getBoundingClientRect();
+  const p = -rect.top / Math.max(rect.height, 1);
+  scrollProgress = Math.min(Math.max(p, 0), 1);
+}
+window.addEventListener('scroll', updateScroll, { passive:true });
+updateScroll();
 window.addEventListener('pointermove', (e)=>{
   pointer.x = (e.clientX/window.innerWidth)*2 - 1;
   pointer.y = (e.clientY/window.innerHeight)*2 - 1;
@@ -100,6 +118,12 @@ function frame(){
   // muis-tilt, gedempt
   tilt.rotation.x += (target.x - tilt.rotation.x) * DAMP;
   tilt.rotation.y += (target.y - tilt.rotation.y) * DAMP;
+  // scroll-gestuurde turntable + zoom-out, soepel gedempt
+  const rotTarget = scrollProgress * SCROLL_ROT;
+  const scaleTarget = 1 - scrollProgress * SCROLL_ZOOM;
+  pivot.rotation.y += (rotTarget - pivot.rotation.y) * 0.08;
+  const s = pivot.scale.x + (scaleTarget - pivot.scale.x) * 0.08;
+  pivot.scale.set(s, s, s);
   renderer.render(scene, camera);
   rafId = requestAnimationFrame(frame);
 }
@@ -111,9 +135,17 @@ document.addEventListener('visibilitychange', ()=>{ document.hidden ? stop() : s
 start();
 }
 
-// Wacht tot de DOM (incl. <canvas id="scene">) bestaat voordat we Three.js starten.
+// Start een aap op elk canvas met [data-aap], plus het oude #scene voor backwards-compat.
+function initAll(){
+  const canvases = new Set(document.querySelectorAll('canvas[data-aap]'));
+  const legacy = document.getElementById('scene');
+  if (legacy) canvases.add(legacy);
+  canvases.forEach(init);
+}
+
+// Wacht tot de DOM (incl. de canvassen) bestaat voordat we Three.js starten.
 if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', init);
+  document.addEventListener('DOMContentLoaded', initAll);
 } else {
-  init();
+  initAll();
 }
